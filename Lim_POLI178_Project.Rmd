@@ -1,0 +1,130 @@
+---
+title: "Lim_Project_Task1"
+author: "sheily lim"
+date: "10/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+```
+
+
+## Importing data set
+
+Big question: Did US intervention beginning in 2001 help improve Afghanistan's
+human rights record?
+
+```{r}
+human_rights <- read.csv("Data/human-rights-scores.csv")
+head(human_rights)
+
+
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(stargazer)
+# install.packages("stargazer")
+# install.packages("broom")
+library(broom)
+
+# The higher the score, the better. Ranges from -3.8 to 5.4
+```
+
+## Cleaning the data (human rights)
+
+```{r}
+# renaming score column
+human_rights <- rename(human_rights, Score = Human.Rights.Score..Schnakenberg...Fariss..2014..Fariss..2019.)
+
+human_rights<- human_rights %>% filter(Code == "AFG")
+```
+
+## Some statistical analysis (human rights)
+This shows the overall mean human rights score. It shows when the min and max occured, as well
+as what the mean was over pre and post US intervention
+We observe the mean is lower under US intervention
+
+```{r}
+
+# records the max and min
+max_rights <- max(human_rights$Score)
+min_rights <- min(human_rights$Score)
+
+# creates a column that shows time passed since 1946 for easier regression fitting
+human_rights$years_passed <- human_rights$Year - 1946
+
+#creates a column that has 1 for post US intervention, 0 for pre
+human_rights$pre_post <- as.factor(ifelse(human_rights$Year >= 2001, 1, 0))
+
+# finds mean of pre-US HR score
+pre_us_mean_hr <- mean(filter(human_rights, pre_post == 0)$Score)
+
+# finds mean of post-US HR score
+post_us_mean_hr <- mean(filter(human_rights, pre_post == 1)$Score)
+
+# locates the year where min and max HR score occur 
+human_rights[human_rights$Score == max_rights,]
+human_rights[human_rights$Score == min_rights,]
+
+# ttest for statistical significance
+ttest <- t.test(filter(human_rights, pre_post == 0)$Score, filter(human_rights, pre_post == 1)$Score)
+tidy(ttest)
+```
+
+
+Here we are plotting the human rights score over time
+We see there is a steep drop in 1978 from -.91 to -2.92
+```{r}
+# plot scores over time
+hr_scatter <- ggplot(dat = human_rights, aes(x = Year, y = Score)) +
+  geom_point(aes(color = pre_post)) +
+  geom_line(aes(color = pre_post)) +
+  geom_smooth(method = "lm", aes(color = pre_post), se = F) +
+  geom_smooth(method = "lm", se = F) +
+  labs(title = "Human Rights Scores in Afghanistan Over Time") +
+  theme_classic() 
+
+hr_scatter
+
+# check the table around the years where we see the steep drop, identify it (1978)
+human_rights[human_rights$Year > 1976 & human_rights$Year < 1983,]
+```
+
+Running regressions for overall HR score and years passed, then separated by pre
+and post intervention 
+```{r}
+
+# relationship between human rights score and number of years passed 
+lm_total <- lm(human_rights$Score ~ human_rights$years_passed)
+
+# relationship between human rights score and years passed before intervention
+lm_pre <- lm(filter(human_rights, pre_post == 0)$Score ~ filter(human_rights, pre_post == 0)$years_passed)
+
+# relationship between human rights score and years passed after intervention
+lm_post <- lm(filter(human_rights, pre_post == 1)$Score ~ filter(human_rights, pre_post == 1)$years_passed)
+
+# print out table with all regression values
+stargazer(lm_total, lm_pre, lm_post, type = "html", dep.var.labels = c("Total Time", "Pre-Intervention", "Post Intervention"), title = "Linear Regressions", out = "hr_regression1.htm")
+
+stargazer(human_rights, type = "html", title = "Human Rights Scores", out = "hr_summary.htm")
+
+
+```
+
+Visualization: Bin the HR scores and then barplot
+```{r}
+# creating bins for the HR scores
+breaks = c(-4, -3, -2, -1, 0, 1, 2)
+labels = c("-3", "-2", "-1", "0", "1", "2")
+
+# adding a column to the df with the binned data
+human_rights$binned_scores <- cut(human_rights$Score, breaks = breaks, labels = labels)
+
+
+hr_barplot <- ggplot(dat = human_rights, aes(x = binned_scores, color = (pre_post))) +
+  geom_bar() +
+  labs(x = "Human Rights Score", y = "Count", title = "Count of Human Rights Scores in Afghanistan since 1946") + 
+  theme_classic()
+```
